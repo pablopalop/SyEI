@@ -1,0 +1,337 @@
+// SyEI - Holistic Medical Center Prisma Schema
+// This file contains all the database models for the medical center backoffice system
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// =====================================================
+// CORE MODELS
+// =====================================================
+
+model User {
+  id               String   @id @default(uuid())
+  firstName        String   @map("first_name") @db.VarChar(100)
+  lastName         String   @map("last_name") @db.VarChar(100)
+  email            String   @unique @db.VarChar(255)
+  passwordHash     String   @map("password_hash") @db.VarChar(255)
+  role             UserRole
+  registrationDate DateTime @default(now()) @map("registration_date")
+  isActive         Boolean  @default(true) @map("is_active")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+  createdBy        String?  @map("created_by")
+  updatedBy        String?  @map("updated_by")
+
+  // Relations
+  specialist    Specialist?
+  patient       Patient?
+  familyMember  FamilyMember?
+  
+  // Audit relations
+  createdUser   User? @relation("UserCreatedBy", fields: [createdBy], references: [id])
+  updatedUser   User? @relation("UserUpdatedBy", fields: [updatedBy], references: [id])
+  createdUsers  User[] @relation("UserCreatedBy")
+  updatedUsers  User[] @relation("UserUpdatedBy")
+
+  // Notifications
+  notifications Notification[]
+
+  // Audit logs
+  auditLogs AuditLog[]
+
+  @@map("users")
+}
+
+model Specialist {
+  id                   String   @id @default(uuid())
+  userId               String   @unique @map("user_id")
+  specialty            String   @db.VarChar(100)
+  description          String?
+  phoneNumber          String?  @map("phone_number") @db.VarChar(20)
+  professionalLicense  String?  @map("professional_license") @db.VarChar(100)
+  bio                  String?
+  createdAt            DateTime @default(now()) @map("created_at")
+  updatedAt            DateTime @updatedAt @map("updated_at")
+  createdBy            String?  @map("created_by")
+  updatedBy            String?  @map("updated_by")
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // Specialist relations
+  appointments         Appointment[]
+  availabilityBlocks   AvailabilityBlock[]
+  medicalRecords       MedicalRecord[]
+  templates            Template[]
+  educationalMaterials EducationalMaterial[]
+  
+  // Audit relations
+  createdUser User? @relation("SpecialistCreatedBy", fields: [createdBy], references: [id])
+  updatedUser User? @relation("SpecialistUpdatedBy", fields: [updatedBy], references: [id])
+
+  @@map("specialists")
+}
+
+model Patient {
+  id                    String   @id @default(uuid())
+  userId                String   @unique @map("user_id")
+  dateOfBirth           DateTime @map("date_of_birth")
+  address               String?
+  emergencyPhone        String?  @map("emergency_phone") @db.VarChar(20)
+  emergencyContactName  String?  @map("emergency_contact_name") @db.VarChar(200)
+  baseMedicalHistory    String?  @map("base_medical_history")
+  createdAt             DateTime @default(now()) @map("created_at")
+  updatedAt             DateTime @updatedAt @map("updated_at")
+  createdBy             String?  @map("created_by")
+  updatedBy             String?  @map("updated_by")
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // Patient relations
+  familyMembers         FamilyMember[]
+  appointments          Appointment[]
+  medicalRecords        MedicalRecord[]
+  materialAssignments   PatientMaterialAssignment[]
+  
+  // Audit relations
+  createdUser User? @relation("PatientCreatedBy", fields: [createdBy], references: [id])
+  updatedUser User? @relation("PatientUpdatedBy", fields: [updatedBy], references: [id])
+
+  @@map("patients")
+}
+
+model FamilyMember {
+  id         String   @id @default(uuid())
+  userId     String   @map("user_id")
+  patientId  String   @map("patient_id")
+  relationship String @db.VarChar(50)
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+  createdBy  String?  @map("created_by")
+  updatedBy  String?  @map("updated_by")
+
+  // Relations
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  patient Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  
+  // Audit relations
+  createdUser User? @relation("FamilyMemberCreatedBy", fields: [createdBy], references: [id])
+  updatedUser User? @relation("FamilyMemberUpdatedBy", fields: [updatedBy], references: [id])
+
+  @@unique([userId, patientId])
+  @@map("family_members")
+}
+
+// =====================================================
+// APPOINTMENT AND CALENDAR MANAGEMENT MODELS
+// =====================================================
+
+model Appointment {
+  id             String            @id @default(uuid())
+  specialistId   String            @map("specialist_id")
+  patientId      String            @map("patient_id")
+  startDateTime  DateTime          @map("start_datetime")
+  endDateTime    DateTime          @map("end_datetime")
+  status         AppointmentStatus @default(Pending)
+  appointmentType String            @map("appointment_type") @db.VarChar(50)
+  internalNotes  String?           @map("internal_notes")
+  createdAt      DateTime          @default(now()) @map("created_at")
+  updatedAt      DateTime          @updatedAt @map("updated_at")
+  createdBy      String?           @map("created_by")
+  updatedBy      String?           @map("updated_by")
+
+  // Relations
+  specialist Specialist @relation(fields: [specialistId], references: [id], onDelete: Cascade)
+  patient    Patient    @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  
+  // Audit relations
+  createdUser User? @relation("AppointmentCreatedBy", fields: [createdBy], references: [id])
+  updatedUser User? @relation("AppointmentUpdatedBy", fields: [updatedBy], references: [id])
+
+  @@map("appointments")
+}
+
+model AvailabilityBlock {
+  id                  String   @id @default(uuid())
+  specialistId        String   @map("specialist_id")
+  dayOfWeek           Int      @map("day_of_week") // 1=Monday, 7=Sunday
+  startTime           DateTime @map("start_time")
+  endTime             DateTime @map("end_time")
+  isActive            Boolean  @default(true) @map("is_active")
+  exceptionDate       DateTime? @map("exception_date")
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+  createdBy           String?  @map("created_by")
+  updatedBy           String?  @map("updated_by")
+
+  // Relations
+  specialist Specialist @relation(fields: [specialistId], references: [id], onDelete: Cascade)
+  
+  // Audit relations
+  createdUser User? @relation("AvailabilityBlockCreatedBy", fields: [createdBy], references: [id])
+  updatedUser User? @relation("AvailabilityBlockUpdatedBy", fields: [updatedBy], references: [id])
+
+  @@map("availability_blocks")
+}
+
+// =====================================================
+// MEDICAL RECORDS AND CONTENT MODELS
+// =====================================================
+
+model MedicalRecord {
+  id                String   @id @default(uuid())
+  patientId         String   @map("patient_id")
+  specialistId      String   @map("specialist_id")
+  recordDate        DateTime @default(now()) @map("record_date")
+  diagnosis         String?
+  treatment         String?
+  progressNotes     String?  @map("progress_notes")
+  attachedFilesJson Json?    @map("attached_files_json")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+  createdBy         String?  @map("created_by")
+  updatedBy         String?  @map("updated_by")
+
+  // Relations
+  patient    Patient    @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  specialist Specialist @relation(fields: [specialistId], references: [id], onDelete: Cascade)
+  
+  // Audit relations
+  createdUser User? @relation("MedicalRecordCreatedBy", fields: [createdBy], references: [id])
+  updatedUser User? @relation("MedicalRecordUpdatedBy", fields: [updatedBy], references: [id])
+
+  @@map("medical_records")
+}
+
+model Template {
+  id           String   @id @default(uuid())
+  specialistId String?  @map("specialist_id")
+  templateName String   @map("template_name") @db.VarChar(200)
+  content      String
+  templateType String   @map("template_type") @db.VarChar(50)
+  isGlobal     Boolean  @default(false) @map("is_global")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+  createdBy    String?  @map("created_by")
+  updatedBy    String?  @map("updated_by")
+
+  // Relations
+  specialist Specialist? @relation(fields: [specialistId], references: [id], onDelete: SetNull)
+  
+  // Audit relations
+  createdUser User? @relation("TemplateCreatedBy", fields: [createdBy], references: [id])
+  updatedUser User? @relation("TemplateUpdatedBy", fields: [updatedBy], references: [id])
+
+  @@map("templates")
+}
+
+model EducationalMaterial {
+  id           String   @id @default(uuid())
+  title        String   @db.VarChar(200)
+  description  String?
+  contentUrl   String   @map("content_url")
+  materialType String   @map("material_type") @db.VarChar(50)
+  publishDate  DateTime @default(now()) @map("publish_date")
+  specialistId String?  @map("specialist_id")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+  createdBy    String?  @map("created_by")
+  updatedBy    String?  @map("updated_by")
+
+  // Relations
+  specialist Specialist? @relation(fields: [specialistId], references: [id], onDelete: SetNull)
+  
+  // Material assignments
+  materialAssignments PatientMaterialAssignment[]
+  
+  // Audit relations
+  createdUser User? @relation("EducationalMaterialCreatedBy", fields: [createdBy], references: [id])
+  updatedUser User? @relation("EducationalMaterialUpdatedBy", fields: [updatedBy], references: [id])
+
+  @@map("educational_materials")
+}
+
+model PatientMaterialAssignment {
+  id                 String   @id @default(uuid())
+  patientId          String   @map("patient_id")
+  materialId         String   @map("material_id")
+  assignmentDate     DateTime @default(now()) @map("assignment_date")
+  specialistComments String?  @map("specialist_comments")
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+  createdBy          String?  @map("created_by")
+  updatedBy          String?  @map("updated_by")
+
+  // Relations
+  patient  Patient            @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  material EducationalMaterial @relation(fields: [materialId], references: [id], onDelete: Cascade)
+  
+  // Audit relations
+  createdUser User? @relation("PatientMaterialAssignmentCreatedBy", fields: [createdBy], references: [id])
+  updatedUser User? @relation("PatientMaterialAssignmentUpdatedBy", fields: [updatedBy], references: [id])
+
+  @@unique([patientId, materialId])
+  @@map("patient_material_assignments")
+}
+
+// =====================================================
+// ADDITIONAL MODELS FOR AUDIT & PERMISSIONS
+// =====================================================
+
+model Notification {
+  id               String   @id @default(uuid())
+  userId           String   @map("user_id")
+  title            String   @db.VarChar(200)
+  message          String
+  notificationType String   @map("notification_type") @db.VarChar(50)
+  isRead           Boolean  @default(false) @map("is_read")
+  createdAt        DateTime @default(now()) @map("created_at")
+  readAt           DateTime? @map("read_at")
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("notifications")
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  tableName  String   @map("table_name") @db.VarChar(100)
+  recordId   String   @map("record_id")
+  action     String   @db.VarChar(20) // INSERT, UPDATE, DELETE
+  oldValues  Json?
+  newValues  Json?
+  userId     String?  @map("user_id")
+  timestamp  DateTime @default(now())
+
+  // Relations
+  user User? @relation(fields: [userId], references: [id])
+
+  @@map("audit_logs")
+}
+
+// =====================================================
+// ENUMS
+// =====================================================
+
+enum UserRole {
+  Admin
+  Specialist
+  Patient
+  FamilyMember
+}
+
+enum AppointmentStatus {
+  Pending
+  Confirmed
+  Canceled
+  Completed
+  NoShow
+} 
